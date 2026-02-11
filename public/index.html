@@ -2572,26 +2572,6 @@
             line-height: 1.7;
         }
 
-        .btn-load-to-sim {
-            background: linear-gradient(135deg, #6366f1, #4f46e5);
-            color: #1a1a2e;
-            padding: 14px 28px;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-            font-family: 'Heebo', sans-serif;
-            font-size: 16px;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            display: block;
-            margin: 20px auto 0;
-        }
-
-        .btn-load-to-sim:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
-        }
-
         .btn-reupload {
             background: rgba(99, 102, 241, 0.06);
             border: 1px solid rgba(99, 102, 241, 0.2);
@@ -3004,7 +2984,7 @@
         .verdict-track .track-bar-bg {
             position: relative;
             height: 10px;
-            background: linear-gradient(to left, #ef4444 0%, #f97316 25%, #fbbf24 50%, #34d399 75%, #10b981 100%);
+            background: linear-gradient(to right, #ef4444 0%, #f97316 25%, #fbbf24 50%, #34d399 75%, #10b981 100%);
             border-radius: 5px;
             box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
         }
@@ -4344,6 +4324,7 @@
                                 <thead>
                                     <tr>
                                         <th>#</th>
+                                        <th class="col-name">שם</th>
                                         <th class="col-type">סוג מסלול</th>
                                         <th class="col-percent" style="min-width: 180px;">אחוז (0% ← 100%)</th>
                                         <th class="col-amount">סכום (₪)</th>
@@ -4355,7 +4336,7 @@
                                 <tbody id="analyzeInputBody"></tbody>
                                 <tfoot>
                                     <tr class="totals-row" id="analyzeTotalsRow">
-                                        <td><strong>סה"כ</strong></td>
+                                        <td colspan="2"><strong>סה"כ</strong></td>
                                         <td></td>
                                         <td><strong id="analyzeTotalPercent" class="percent-value">0%</strong></td>
                                         <td><strong id="analyzeTotalAmount" class="amount-display">₪0</strong></td>
@@ -4397,9 +4378,6 @@
                 <div class="analyze-results" id="analyzeResults">
                     <!-- Verdict Display -->
                     <div id="verdictDisplay"></div>
-
-                    <!-- Load to Simulator -->
-                    <button class="btn-load-to-sim" onclick="loadAnalyzedToSimulator()">📊 העלה לסימולטור</button>
                 </div>
             </div>
         </div>
@@ -4502,6 +4480,42 @@ const trackTypes = {
             switchMixPreset('balanced');
         }
 
+        // Store uploaded rates to preserve when switching presets
+        let uploadedRates = {};
+        let hasUploadedRates = false;
+
+        function saveUploadedRates() {
+            // Save current track rates by type for reuse in presets
+            uploadedRates = {};
+            tracks.forEach(t => {
+                if (!uploadedRates[t.type]) {
+                    uploadedRates[t.type] = t.rate;
+                }
+            });
+            hasUploadedRates = Object.keys(uploadedRates).length > 0;
+        }
+
+        function getPreservedRate(type, term) {
+            // If we have an uploaded rate for this type, use it
+            if (hasUploadedRates && uploadedRates[type]) {
+                return uploadedRates[type];
+            }
+            // Map similar types for "allfixed" preset
+            if (hasUploadedRates && type === 'fixed') {
+                // Try to find any fixed-type rate, or use average of all rates
+                if (uploadedRates.fixed) return uploadedRates.fixed;
+                if (uploadedRates.fixed_unlinked) return uploadedRates.fixed_unlinked;
+                if (uploadedRates.fixedCpi) return uploadedRates.fixedCpi;
+                // Use average of all uploaded rates
+                const rates = Object.values(uploadedRates);
+                if (rates.length > 0) {
+                    return rates.reduce((a, b) => a + b, 0) / rates.length;
+                }
+            }
+            // Fallback to BOI rate
+            return getBoiRate(type, term);
+        }
+
         function switchMixPreset(mixName) {
             activeMixPreset = mixName;
 
@@ -4510,10 +4524,10 @@ const trackTypes = {
                 tab.classList.toggle('active', tab.dataset.mix === mixName);
             });
 
-            // Load tracks
+            // Load tracks with preserved rates
             const mix = exampleMixes[mixName];
             if (!mix) return;
-            tracks = mixToTracks(mix);
+            tracks = mixToTracksWithRates(mix);
             renderTracks();
             updateTotals();
 
@@ -4538,6 +4552,18 @@ const trackTypes = {
             update3WayComparison();
         }
 
+        function mixToTracksWithRates(mix) {
+            return mix.map((m, i) => ({
+                id: Date.now() + i,
+                name: '',
+                type: m.type,
+                percentage: m.percentage,
+                amount: 0,
+                rate: m.rate !== undefined ? m.rate : getPreservedRate(m.type, m.term),
+                term: m.term
+            }));
+        }
+
         function update3WayComparison() {
             const totalLoan = parseFloat(document.getElementById('totalLoan').value) || 1000000;
 
@@ -4545,7 +4571,7 @@ const trackTypes = {
                 let totalMonthly = 0, totalInterest = 0, totalPayments = 0;
                 mix.forEach(m => {
                     const amount = totalLoan * m.percentage / 100;
-                    const rate = m.rate !== undefined ? m.rate : getBoiRate(m.type, m.term);
+                    const rate = m.rate !== undefined ? m.rate : getPreservedRate(m.type, m.term);
                     const monthly = calcMonthlyPayment(amount, rate, m.term);
                     totalMonthly += monthly;
                     totalPayments += monthly * m.term;
@@ -5872,11 +5898,12 @@ const trackTypes = {
             }
         }
 
-        function addAnalyzeRow(type, rate, percentage, term) {
+        function addAnalyzeRow(type, rate, percentage, term, name) {
             type = type || 'prime';
             rate = rate || '';
             percentage = percentage || 0;
             term = term || 300;
+            name = name || '';
 
             const rowId = ++analyzeRowId;
             const totalLoan = parseFloat(document.getElementById('analyzeTotalLoan').value) || 1000000;
@@ -5888,6 +5915,9 @@ const trackTypes = {
             row.dataset.rowId = rowId;
             row.innerHTML = `
                 <td><span class="track-row-num">${rowNum}</span></td>
+                <td>
+                    <input type="text" class="track-name-input" id="analyze-name-${rowId}" value="${name}" placeholder="מסלול ${rowNum}">
+                </td>
                 <td>
                     <select>
                         ${Object.entries(trackTypes).map(([k, v]) => `<option value="${k}" ${k === type ? 'selected' : ''}>${v.name}</option>`).join('')}
@@ -6460,6 +6490,7 @@ const trackTypes = {
             Array.from(body.children).forEach(row => {
                 const rowId = row.dataset.rowId;
                 const select = row.querySelector('select');
+                const nameInput = document.getElementById(`analyze-name-${rowId}`);
                 const amountInput = document.getElementById(`analyze-amount-${rowId}`);
                 const rateInput = document.getElementById(`analyze-rate-${rowId}`);
                 const termInput = document.getElementById(`analyze-term-${rowId}`);
@@ -6467,12 +6498,13 @@ const trackTypes = {
                 if (!select) return;
 
                 const type = select.value;
+                const name = nameInput?.value || '';
                 const rate = parseFloat(rateInput?.value) || 0;
                 const amount = parseFloat(amountInput?.value) || 0;
                 const term = parseInt(termInput?.value) || 300;
 
                 if (rate > 0) {
-                    parsedTracks.push({ type, rate, amount, term });
+                    parsedTracks.push({ type, name, rate, amount, term });
                 }
             });
 
@@ -6854,11 +6886,6 @@ const trackTypes = {
             return mapping[apiType] || apiType;
         }
 
-        // Load analyzed tracks to main simulator
-        function loadAnalyzedToSimulator() {
-            loadToSimulator();
-        }
-
         // Load extracted tracks to simulator for editing
         function loadToSimulator() {
             if (!analyzedTracks || analyzedTracks.length === 0) {
@@ -6880,6 +6907,9 @@ const trackTypes = {
                 rate: t.rate,
                 term: t.term || t.periodMonths || 240
             }));
+
+            // Save uploaded rates for preset comparisons
+            saveUploadedRates();
 
             renderTracks();
             updateTotals();
