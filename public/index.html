@@ -6180,6 +6180,9 @@ const trackTypes = {
                     throw new Error('לא זוהו מסלולי משכנתא בקובץ. נסו הזנה ידנית.');
                 }
 
+                // Calculate remaining periods for existing mortgages
+                extracted.tracks = calculateRemainingPeriods(extracted.tracks, extracted.isExistingMortgage);
+
                 loadingText.textContent = 'מנתח תוצאות...';
                 const totalAmount = extracted.totalAmount || extracted.tracks.reduce((s, t) => s + (t.amount || 0), 0);
 
@@ -6297,6 +6300,43 @@ const trackTypes = {
         }
 
         // ==============================
+        // CALCULATE REMAINING PERIODS FOR EXISTING MORTGAGES
+        // ==============================
+        function calculateRemainingPeriods(tracks, isExistingMortgage) {
+            const today = new Date();
+
+            return tracks.map(track => {
+                // Get the period to use
+                let periodMonths = track.periodMonths || track.originalPeriodMonths || 300;
+
+                // If there's an explicit remaining months, use it
+                if (track.remainingMonths && track.remainingMonths > 0) {
+                    periodMonths = track.remainingMonths;
+                }
+                // If there's a start date, calculate remaining months
+                else if (track.startDate && isExistingMortgage) {
+                    const startDate = new Date(track.startDate);
+                    if (!isNaN(startDate.getTime())) {
+                        const monthsElapsed = Math.floor(
+                            (today.getFullYear() - startDate.getFullYear()) * 12 +
+                            (today.getMonth() - startDate.getMonth())
+                        );
+                        const originalPeriod = track.originalPeriodMonths || periodMonths;
+                        const remaining = originalPeriod - monthsElapsed;
+                        periodMonths = Math.max(1, remaining); // At least 1 month remaining
+                        console.log(`Track ${track.name}: Started ${track.startDate}, ${monthsElapsed} months elapsed, ${periodMonths} remaining`);
+                    }
+                }
+
+                return {
+                    ...track,
+                    term: periodMonths,
+                    periodMonths: periodMonths
+                };
+            });
+        }
+
+        // ==============================
         // MORTGAGE TEXT PARSER (Regex) - SIMPLE VERSION
         // ==============================
         function parseMortgageFromText(text) {
@@ -6341,13 +6381,25 @@ const trackTypes = {
             function findAllRates(text) {
                 const rates = [];
 
-                // Pattern: מתואמת + number
-                let regex = /מתואמת[^0-9]{0,20}(\d+[.,]\d+)/g;
+                // Pattern: נומינלית ליום + number (highest priority - most updated rate)
+                let regex = /נומינלית\s*ליום[^0-9]{0,20}(\d+[.,]\d+)/g;
                 let match;
                 while ((match = regex.exec(text)) !== null) {
                     const r = parseFloat(match[1].replace(',', '.'));
                     if (r >= 1 && r <= 15) {
-                        rates.push({ rate: r, pos: match.index, source: 'מתואמת' });
+                        rates.push({ rate: r, pos: match.index, source: 'נומינלית ליום', priority: 1 });
+                    }
+                }
+
+                // Pattern: נומינלית + number (high priority)
+                regex = /נומינלית[^0-9]{0,20}(\d+[.,]\d+)/g;
+                while ((match = regex.exec(text)) !== null) {
+                    const r = parseFloat(match[1].replace(',', '.'));
+                    if (r >= 1 && r <= 15) {
+                        const exists = rates.some(existing => Math.abs(existing.pos - match.index) < 30);
+                        if (!exists) {
+                            rates.push({ rate: r, pos: match.index, source: 'נומינלית', priority: 2 });
+                        }
                     }
                 }
 
@@ -6359,7 +6411,7 @@ const trackTypes = {
                         // Check if we already have this rate at similar position
                         const exists = rates.some(existing => Math.abs(existing.pos - match.index) < 30);
                         if (!exists) {
-                            rates.push({ rate: r, pos: match.index, source: '%' });
+                            rates.push({ rate: r, pos: match.index, source: '%', priority: 3 });
                         }
                     }
                 }
@@ -6398,19 +6450,22 @@ const trackTypes = {
 
                 console.log(`Track ${trackDef.type}: found "${found.keyword}" at ${found.pos}`);
 
-                // Find closest unused rate
+                // Find closest unused rate (prefer נומינלית ליום > נומינלית > %)
                 let bestRate = null;
                 let bestDist = Infinity;
+                let bestPriority = Infinity;
 
                 for (const rate of allRates) {
                     if (usedPositions.has(rate.pos)) continue;
                     const dist = Math.abs(rate.pos - found.pos);
                     // Rate should be within 500 chars of keyword
-                    if (dist < 500 && dist < bestDist) {
-                        // Prefer מתואמת rates
-                        if (rate.source === 'מתואמת' || bestRate === null || bestRate.source !== 'מתואמת') {
+                    if (dist < 500) {
+                        // Prefer higher priority (lower number) rates, then closer distance
+                        const priority = rate.priority || 3;
+                        if (priority < bestPriority || (priority === bestPriority && dist < bestDist)) {
                             bestRate = rate;
                             bestDist = dist;
+                            bestPriority = priority;
                         }
                     }
                 }
@@ -6419,6 +6474,7 @@ const trackTypes = {
                     usedPositions.add(bestRate.pos);
                     foundTracks.push({
                         type: trackDef.type,
+                        name: found.keyword,
                         rate: bestRate.rate,
                         amount: 0,
                         term: 300
@@ -6456,12 +6512,14 @@ const trackTypes = {
                     }
 
                     if (trackType && !result.tracks.find(t => t.type === trackType)) {
-                        // Look for rate in this line
-                        const rateMatch = line.match(/(\d+[.,]\d+)\s*%/) || line.match(/מתואמת[^0-9]*(\d+[.,]\d+)/);
+                        // Look for rate in this line - prefer נומינלית ליום > נומינלית > %
+                        const rateMatch = line.match(/נומינלית\s*ליום[^0-9]*(\d+[.,]\d+)/)
+                            || line.match(/נומינלית[^0-9]*(\d+[.,]\d+)/)
+                            || line.match(/(\d+[.,]\d+)\s*%/);
                         if (rateMatch) {
                             const rate = parseFloat(rateMatch[1].replace(',', '.'));
                             if (rate >= 1 && rate <= 15) {
-                                result.tracks.push({ type: trackType, rate, amount: 0, term: 300 });
+                                result.tracks.push({ type: trackType, name: line.trim().substring(0, 50), rate, amount: 0, term: 300 });
                                 console.log(`Fallback found: ${trackType} = ${rate}%`);
                             }
                         }
@@ -6643,8 +6701,11 @@ const trackTypes = {
             // Build per-track display with position indicator
             const trackDetailsHtml = analysis.trackResults.map((tr, index) => {
                 const typeName = trackTypes[tr.type]?.name || tr.type;
-                const trackName = tr.name || `מסלול ${index + 1}`;
-                const displayName = tr.name ? `${trackName} (${typeName})` : typeName;
+                const trackNum = index + 1;
+                // Always show track number, plus custom name if exists, plus type
+                const displayName = tr.name
+                    ? `${trackNum}. ${tr.name} (${typeName})`
+                    : `${trackNum}. ${typeName}`;
                 const periodYears = Math.round(tr.term / 12);
 
                 // Determine status and color based on position score
