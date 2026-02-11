@@ -6116,11 +6116,17 @@ const trackTypes = {
             const result = {
                 bankName: 'זוהה אוטומטית',
                 totalAmount: data.totalAmount,
+                isExistingMortgage: data.isExistingMortgage || false,
                 tracks: data.tracks.map(t => ({
+                    name: t.name || '',
                     type: trackTypeMap[t.type] || 'fixed',
                     rate: t.effectiveRate,
                     amount: t.amount,
-                    term: t.periodMonths
+                    periodMonths: t.periodMonths || t.originalPeriodMonths,
+                    originalPeriodMonths: t.originalPeriodMonths,
+                    startDate: t.startDate,
+                    remainingMonths: t.remainingMonths,
+                    term: t.periodMonths || t.originalPeriodMonths
                 }))
             };
             
@@ -6369,10 +6375,11 @@ const trackTypes = {
 
             // --- SIMPLE TRACK DETECTION ---
             // Keywords for each track type (order matters - check "לא צמוד" before "צמוד")
+            // IMPORTANT: P = Prime! P-0.70% or P+1.5% means Prime rate
             const trackKeywords = [
-                { type: 'prime', keywords: ['פריים', 'פראים', 'prime'] },
+                { type: 'prime', keywords: ['פריים', 'פראים', 'prime', 'P-', 'P+', 'עוגן פריים', 'בסיס פריים'] },
                 { type: 'fixed', keywords: ['קבועה לא צמודה', 'קבוע לא צמוד', 'לא צמודה קבועה', 'קל"צ', 'קלצ'] },
-                { type: 'variable5yr', keywords: ['משתנה לא צמודה', 'משתנה לא צמוד', 'לא צמודה משתנה', 'מכ"מ', 'מכמ', 'משתנה כל'] },
+                { type: 'variable5yr', keywords: ['משתנה לא צמודה', 'משתנה לא צמוד', 'לא צמודה משתנה', 'מכ"מ', 'מכמ', 'משתנה כל', 'H+', 'עוגן מק"מ'] },
                 { type: 'fixedCpi', keywords: ['קבועה צמודה', 'קבוע צמוד', 'צמודה קבועה', 'קצ"מ', 'קצמ'] },
                 { type: 'variableCpi', keywords: ['משתנה צמודה', 'משתנה צמוד', 'צמודה משתנה', 'מצ"מ', 'מצמ'] }
             ];
