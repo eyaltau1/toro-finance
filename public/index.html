@@ -4367,12 +4367,14 @@
 
     <script>
         // Track types configuration
-        const trackTypes = {
-            prime: { name: 'פריים', hasCpi: false },
-            fixed: { name: 'קבועה לא צמודה', hasCpi: false },
-            fixedCpi: { name: 'קבועה צמודה למדד', hasCpi: true },
-            variable5yr: { name: 'משתנה כל 5 שנים', hasCpi: false },
-            variableCpi: { name: 'משתנה צמודה למדד', hasCpi: true }
+const trackTypes = {
+    prime: { name: 'פריים', hasCpi: false },
+    fixed: { name: 'קבועה לא צמודה', hasCpi: false },
+    fixedCpi: { name: 'קבועה צמודה למדד', hasCpi: true },
+    fixedLinked: { name: 'קבועה צמודה', hasCpi: true },
+    variable5yr: { name: 'משתנה כל 5 שנים', hasCpi: false },
+    variableCpi: { name: 'משתנה צמודה למדד', hasCpi: true },
+    variableLinked: { name: 'משתנה צמודה', hasCpi: true }
         };
 
         let tracks = [];
@@ -6015,7 +6017,7 @@
             
             // המרה לפורמט של toro
             const trackTypeMap = {
-                'prime': 'prime',
+                'prime': 'פריים',
                 'fixed_unlinked': 'fixed',
                 'fixed_linked': 'fixedLinked',
                 'variable_unlinked': 'variable5yr',
