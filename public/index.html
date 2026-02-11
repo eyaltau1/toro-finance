@@ -279,12 +279,27 @@
             color: #4a4a6a;
         }
 
-        .tracks-table .col-type { width: 25%; }
-        .tracks-table .col-amount { width: 18%; }
+        .tracks-table .col-name { width: 12%; }
+        .tracks-table .col-type { width: 20%; }
+        .tracks-table .col-amount { width: 15%; }
         .tracks-table .col-percent { width: 12%; }
-        .tracks-table .col-rate { width: 12%; }
-        .tracks-table .col-term { width: 15%; }
-        .tracks-table .col-action { width: 8%; }
+        .tracks-table .col-rate { width: 10%; }
+        .tracks-table .col-term { width: 10%; }
+        .tracks-table .col-action { width: 6%; }
+
+        .track-name-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.9);
+            font-size: 13px;
+            font-family: 'Heebo', sans-serif;
+        }
+
+        .track-name-input::placeholder {
+            color: #9a9aaa;
+        }
 
         .track-row-num {
             color: #a78bfa;
@@ -2832,7 +2847,7 @@
         .verdict-score-bar {
             position: relative;
             height: 12px;
-            background: linear-gradient(to right, #10b981 0%, #34d399 33%, #fbbf24 50%, #f97316 75%, #ef4444 100%);
+            background: linear-gradient(to right, #ef4444 0%, #f97316 25%, #fbbf24 50%, #34d399 75%, #10b981 100%);
             border-radius: 6px;
             box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
         }
@@ -2989,7 +3004,7 @@
         .verdict-track .track-bar-bg {
             position: relative;
             height: 10px;
-            background: linear-gradient(to left, #10b981 0%, #34d399 25%, #fbbf24 50%, #f97316 75%, #ef4444 100%);
+            background: linear-gradient(to left, #ef4444 0%, #f97316 25%, #fbbf24 50%, #34d399 75%, #10b981 100%);
             border-radius: 5px;
             box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
         }
@@ -3023,6 +3038,29 @@
         .verdict-track.excellent {
             border-color: rgba(16, 185, 129, 0.25);
             background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.02));
+        }
+
+        .btn-edit-simulator {
+            display: block;
+            width: 100%;
+            max-width: 300px;
+            margin: 32px auto 0;
+            padding: 16px 32px;
+            background: linear-gradient(135deg, #10b981, #06b6d4);
+            border: none;
+            border-radius: 16px;
+            color: #fff;
+            font-family: 'Heebo', sans-serif;
+            font-size: 1.1em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-edit-simulator:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 30px rgba(16, 185, 129, 0.4);
         }
 
         .offers-table {
@@ -3400,6 +3438,7 @@
                     <thead>
                         <tr>
                             <th>#</th>
+                            <th class="col-name">שם</th>
                             <th class="col-type">סוג מסלול</th>
                             <th class="col-percent" style="min-width: 180px;">אחוז (0% ← 100%)</th>
                             <th class="col-amount">סכום (₪)</th>
@@ -3414,6 +3453,7 @@
                     <tfoot>
                         <tr class="totals-row" id="tableTotalsRow">
                             <td><strong>סה"כ</strong></td>
+                            <td></td>
                             <td></td>
                             <td><strong id="tableTotalPercent" class="percent-value">0%</strong></td>
                             <td><strong id="tableTotalAmount" class="amount-display">₪0</strong></td>
@@ -4368,13 +4408,19 @@
     <script>
         // Track types configuration
 const trackTypes = {
+    // Simulator track types
     prime: { name: 'פריים', hasCpi: false },
     fixed: { name: 'קבועה לא צמודה', hasCpi: false },
     fixedCpi: { name: 'קבועה צמודה למדד', hasCpi: true },
     fixedLinked: { name: 'קבועה צמודה', hasCpi: true },
     variable5yr: { name: 'משתנה כל 5 שנים', hasCpi: false },
     variableCpi: { name: 'משתנה צמודה למדד', hasCpi: true },
-    variableLinked: { name: 'משתנה צמודה', hasCpi: true }
+    variableLinked: { name: 'משתנה צמודה', hasCpi: true },
+    // API track types (from AI reader)
+    fixed_unlinked: { name: 'קבועה לא צמודה', hasCpi: false },
+    fixed_linked: { name: 'קבועה צמודה', hasCpi: true },
+    variable_unlinked: { name: 'משתנה לא צמודה', hasCpi: false },
+    variable_linked: { name: 'משתנה צמודה', hasCpi: true }
         };
 
         let tracks = [];
@@ -4536,10 +4582,11 @@ const trackTypes = {
         }
 
         function addTrack() {
-            if (tracks.length >= 5) return;
+            if (tracks.length >= 20) return;
 
             tracks.push({
                 id: Date.now(),
+                name: '',
                 type: 'prime',
                 percentage: 0,
                 amount: 0,
@@ -4549,6 +4596,13 @@ const trackTypes = {
 
             renderTracks();
             updateTotals();
+        }
+
+        function updateTrackName(trackId, name) {
+            const track = tracks.find(t => t.id === trackId);
+            if (track) {
+                track.name = name;
+            }
         }
 
         function removeTrack(trackId) {
@@ -4679,6 +4733,11 @@ const trackTypes = {
                     <tr data-track-id="${track.id}">
                         <td><span class="track-row-num">${index + 1}</span></td>
                         <td>
+                            <input type="text" class="track-name-input" value="${track.name || ''}"
+                                placeholder="מסלול ${index + 1}"
+                                onchange="updateTrackName(${track.id}, this.value)">
+                        </td>
+                        <td>
                             <select onchange="updateTrack(${track.id}, 'type', this.value)">
                                 ${Object.entries(trackTypes).map(([key, val]) =>
                                     `<option value="${key}" ${track.type === key ? 'selected' : ''}>${val.name}</option>`
@@ -4720,7 +4779,7 @@ const trackTypes = {
                 container.innerHTML += trackHtml;
             });
 
-            document.getElementById('addTrackBtn').style.display = tracks.length >= 5 ? 'none' : 'inline-block';
+            document.getElementById('addTrackBtn').style.display = tracks.length >= 20 ? 'none' : 'inline-block';
         }
 
         // Update track rate and recalculate
@@ -6550,8 +6609,10 @@ const trackTypes = {
             const displayContainer = document.getElementById('verdictDisplay');
 
             // Build per-track display with position indicator
-            const trackDetailsHtml = analysis.trackResults.map(tr => {
-                const trackName = trackTypes[tr.type]?.name || tr.type;
+            const trackDetailsHtml = analysis.trackResults.map((tr, index) => {
+                const typeName = trackTypes[tr.type]?.name || tr.type;
+                const trackName = tr.name || `מסלול ${index + 1}`;
+                const displayName = tr.name ? `${trackName} (${typeName})` : typeName;
                 const periodYears = Math.round(tr.term / 12);
 
                 // Determine status and color based on position score
@@ -6585,7 +6646,7 @@ const trackTypes = {
                 return `
                     <div class="verdict-track ${statusClass}">
                         <div class="track-header">
-                            <span class="track-name">${trackName}</span>
+                            <span class="track-name">${displayName}</span>
                             <span class="track-period">${periodYears} שנה</span>
                         </div>
                         <div class="track-rate-row">
@@ -6635,6 +6696,9 @@ const trackTypes = {
                         <div class="verdict-tracks-title">פירוט לפי מסלול</div>
                         ${trackDetailsHtml}
                     </div>
+                    <button class="btn-edit-simulator" onclick="loadToSimulator()">
+                        🔧 לערוך בסימולטור
+                    </button>
                 </div>
             `;
 
@@ -6713,6 +6777,7 @@ const trackTypes = {
 
                 trackResults.push({
                     type: t.type,
+                    name: t.name || '',
                     rate: parseFloat(rate.toFixed(2)),
                     amount: t.amount,
                     term: t.term,
@@ -6773,8 +6838,34 @@ const trackTypes = {
             };
         }
 
+        // Map API track types to simulator track types
+        function mapTrackType(apiType) {
+            const mapping = {
+                'fixed_unlinked': 'fixed',
+                'fixed_linked': 'fixedCpi',
+                'variable_unlinked': 'variable5yr',
+                'variable_linked': 'variableCpi',
+                'prime': 'prime',
+                'fixed': 'fixed',
+                'fixedCpi': 'fixedCpi',
+                'variable5yr': 'variable5yr',
+                'variableCpi': 'variableCpi'
+            };
+            return mapping[apiType] || apiType;
+        }
+
         // Load analyzed tracks to main simulator
         function loadAnalyzedToSimulator() {
+            loadToSimulator();
+        }
+
+        // Load extracted tracks to simulator for editing
+        function loadToSimulator() {
+            if (!analyzedTracks || analyzedTracks.length === 0) {
+                alert('אין מסלולים לטעינה');
+                return;
+            }
+
             const totalLoan = analyzedTracks.reduce((s, t) => s + t.amount, 0);
             if (totalLoan > 0) {
                 document.getElementById('totalLoan').value = totalLoan;
@@ -6782,11 +6873,12 @@ const trackTypes = {
 
             tracks = analyzedTracks.map((t, i) => ({
                 id: Date.now() + i,
-                type: t.type,
+                name: t.name || '',
+                type: mapTrackType(t.type),
                 percentage: totalLoan > 0 ? Math.round(t.amount / totalLoan * 100) : Math.round(100 / analyzedTracks.length),
                 amount: t.amount,
                 rate: t.rate,
-                term: t.term
+                term: t.term || t.periodMonths || 240
             }));
 
             renderTracks();
