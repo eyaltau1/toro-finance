@@ -6793,8 +6793,18 @@ const trackTypes = {
             updateTotals();
             closeAnalyzeModal();
 
-            // Scroll to simulator
-            document.querySelector('.card').scrollIntoView({ behavior: 'smooth' });
+            // Navigate to simulator section (like goToSection('build'))
+            currentSection = 'build';
+            document.getElementById('landingScreen').style.display = 'none';
+            document.getElementById('appContent').classList.add('visible');
+            document.getElementById('learnButtons').style.display = 'none';
+            document.getElementById('ratesButtons').style.display = 'none';
+            document.getElementById('simulatorSections').style.display = '';
+
+            // Scroll to simulator after a short delay
+            setTimeout(() => {
+                document.querySelector('.card').scrollIntoView({ behavior: 'smooth' });
+            }, 100);
         }
 
         // ==============================
